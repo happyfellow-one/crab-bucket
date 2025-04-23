@@ -1,0 +1,8 @@
+[package]
+name = "crab-bucket"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+quickcheck = "1"
+quickcheck_macros = "1"

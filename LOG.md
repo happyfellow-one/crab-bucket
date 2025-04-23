@@ -1,0 +1,34 @@
+# 2025-04-23
+
+Learning cargo and basics of Rust. I think I'll write a very simple in memory
+key-value store as a warm up. I'll start with the data structure part and do
+networking later. Seems like a more sensible starting point for learning a
+new language.
+
+Memtable has to be able to do several operations:
+
+- Set(key, value): we can squash multiple updates into one, keep the last one.
+- Delete(key): we can't just remove the key from memtable, the key might be
+  present in lower levels, so I need to propagate the tombstone.
+
+For each key, I need to hold at most one operation: either a new value for that
+key, or a tombstone. I can store Vec<u8> option which should actually just represent
+none as nullptr.
+
+Second question, what data structure should I use? The classic choice is to use
+some sort of BST but I'm not a fan of all of the pointer chasing. Let's stick to
+my self-imposed goals and choose something which I can implement in small amount
+of lines of code.
+
+A possible solution is to just keep a vector of operations and sort it when flushing,
+why would that be bad? If I get a lot of operations on the same key, I'll store
+values which I could've deallocated already. What's better?
+
+The vector solution requires sorting at the end, which doesn't help much. I'll do
+BST, I don't need delete operation on it anyway which should keep the implementation
+quite simple (fingers crossed).
+
+I also have a second idea: I could keep everything in a compressed trie. There's just
+one comparison function (lexicographic on sequence of bytes) so I could swing it.
+It's an interesting design space, how wide should my nodes be, when to switch from
+linear scan to 256-wide array etc. Fun!
