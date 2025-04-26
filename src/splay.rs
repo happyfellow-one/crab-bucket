@@ -206,6 +206,7 @@ impl<K: Ord, V> Splay<K, V> {
 
 #[cfg(test)]
 mod tests {
+    use quickcheck::{Arbitrary, Gen};
     use std::collections::HashMap;
 
     use super::*;
@@ -223,18 +224,41 @@ mod tests {
         assert_eq!(tree.get(2), Some(&1));
     }
 
-    #[quickcheck]
-    fn insert_and_get(elems: HashMap<i32, i32>) -> bool {
-        let mut tree: Splay<i32, i32> = Splay::new();
-        for (k, v) in elems.iter() {
-            tree.set(*k, *v);
-        }
+    #[derive(Clone, Debug)]
+    enum Op {
+        Set(i32, i32),
+        Get(i32),
+    }
 
-        for (k, v) in elems.iter() {
-            if tree.get(*k) != Some(v) {
-                return false;
+    impl Arbitrary for Op {
+        fn arbitrary(g: &mut Gen) -> Self {
+            match *g.choose(&[0, 1]).unwrap() {
+                0 => Op::Set(i32::arbitrary(g), i32::arbitrary(g)),
+                1 => Op::Get(i32::arbitrary(g)),
+                _ => unreachable!(),
             }
         }
+    }
+
+    #[quickcheck]
+    fn test_quickcheck(ops: Vec<Op>) -> bool {
+        let mut tree: Splay<i32, i32> = Splay::new();
+        let mut map: HashMap<i32, i32> = HashMap::new();
+
+        for op in ops.iter() {
+            match *op {
+                Op::Set(k, v) => {
+                    tree.set(k, v);
+                    map.insert(k, v);
+                }
+                Op::Get(k) => {
+                    if tree.get(k) != map.get(&k) {
+                        return false;
+                    }
+                }
+            }
+        }
+
         return true;
     }
 }
