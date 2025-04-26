@@ -27,6 +27,7 @@ impl Dir {
     }
 }
 
+/// A path from the current node to the node being splayed.
 #[derive(Clone, Copy)]
 enum Path {
     Here(usize),
@@ -118,6 +119,7 @@ impl<K: Ord, V> Splay<K, V> {
         self.nodes.len() - 1
     }
 
+    /// Swaps upper with lower.
     fn rotate(&mut self, upper: usize, dir: Dir, lower: usize) -> usize {
         assert_eq!(self.child(upper, dir), Some(lower));
 
