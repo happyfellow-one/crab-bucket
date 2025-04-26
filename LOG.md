@@ -1,3 +1,13 @@
+# 2025-04-26
+
+It was a good exercise to implement splay tree! I got through some common
+painpoints of rust (like not being able to get a mutable borrow to a part
+of a structure while holding mutable borrow for the whole structure) but
+I managed to avoid most of the issues by referring to nodes by array index.
+
+I like my code for splay tree, it's actually kinda short and nice? I didn't
+see this kind of implementation before.
+
 # 2025-04-23
 
 Learning cargo and basics of Rust. I think I'll write a very simple in memory
