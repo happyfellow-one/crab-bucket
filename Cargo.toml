@@ -1,8 +1,18 @@
 [package]
-name = "crab-bucket"
+name = "crab_bucket"
 version = "0.1.0"
 edition = "2021"
 
-[dependencies]
+[dev-dependencies]
+criterion = { version = "0.4", features = ["html_reports"] }
 quickcheck = "1"
 quickcheck_macros = "1"
+rand = "0.9"
+splay = "0.1"
+
+[[bench]]
+name = "splay_bench"
+harness = false
+
+[profile.release]
+debug = 1

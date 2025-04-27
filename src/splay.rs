@@ -1,14 +1,31 @@
 use std::cmp::Ordering;
 
+type Idx = usize;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct OptionIdx(Idx);
+const idx_none: OptionIdx = OptionIdx(Idx::MAX);
+
+impl OptionIdx {
+    #[inline]
+    fn to_option(self) -> Option<Idx> {
+        if self == idx_none {
+            None
+        } else {
+            Some(self.0)
+        }
+    }
+}
+
 struct Node<K, V> {
     key: K,
     value: V,
-    left: Option<usize>,
-    right: Option<usize>,
+    left: OptionIdx,
+    right: OptionIdx,
 }
 
-struct Splay<K, V> {
-    root: Option<usize>,
+pub struct Splay<K, V> {
+    root: OptionIdx,
     nodes: Vec<Node<K, V>>,
 }
 
@@ -19,6 +36,7 @@ enum Dir {
 }
 
 impl Dir {
+    #[inline]
     fn flip(self) -> Self {
         match self {
             Dir::Right => Dir::Left,
@@ -26,24 +44,25 @@ impl Dir {
         }
     }
 }
-
 /// A path from the current node to the node being splayed.
 #[derive(Clone, Copy)]
 enum Path {
-    Here(usize),
-    One(usize, Dir, usize),
-    Two(usize, Dir, usize, Dir, usize),
+    Here(Idx),
+    One(Idx, Dir, Idx),
+    Two(Idx, Dir, Idx, Dir, Idx),
 }
 
 impl Path {
-    fn here(&self) -> usize {
+    #[inline]
+    fn here(&self) -> Idx {
         use Path::*;
         match *self {
             Here(idx) | One(idx, ..) | Two(idx, ..) => idx,
         }
     }
 
-    fn extend(self, node_idx: usize, dir: Dir) -> Self {
+    #[inline]
+    fn extend(self, node_idx: Idx, dir: Dir) -> Self {
         use Path::*;
 
         match self {
@@ -60,6 +79,7 @@ enum OrCreate<'a, K, V> {
 }
 
 impl<'a, K, V> OrCreate<'a, K, V> {
+    #[inline]
     fn key(&self) -> &K {
         match self {
             OrCreate::Lookup(k) => k,
@@ -67,6 +87,7 @@ impl<'a, K, V> OrCreate<'a, K, V> {
         }
     }
 
+    #[inline]
     fn value(self) -> Option<V> {
         match self {
             OrCreate::Lookup(_) => None,
@@ -76,90 +97,114 @@ impl<'a, K, V> OrCreate<'a, K, V> {
 }
 
 impl<K: Ord, V> Splay<K, V> {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Splay {
-            root: None,
+            root: idx_none,
             nodes: Vec::new(),
         }
     }
 
-    fn child(&self, idx: usize, dir: Dir) -> Option<usize> {
+    #[inline]
+    fn child(&self, idx: Idx, dir: Dir) -> OptionIdx {
         match dir {
-            Dir::Left => self.nodes[idx].left,
-            Dir::Right => self.nodes[idx].right,
+            Dir::Left => self.nodes[idx as usize].left,
+            Dir::Right => self.nodes[idx as usize].right,
         }
     }
 
-    fn set_child(&mut self, idx: usize, dir: Dir, to: Option<usize>) {
+    #[inline]
+    fn set_child(&mut self, idx: Idx, dir: Dir, to: OptionIdx) {
         match dir {
-            Dir::Left => self.nodes[idx].left = to,
-            Dir::Right => self.nodes[idx].right = to,
-        }
+            Dir::Left => std::mem::replace(&mut self.nodes[idx as usize].left, to),
+            Dir::Right => std::mem::replace(&mut self.nodes[idx as usize].right, to),
+        };
     }
 
-    fn get(&mut self, key: K) -> Option<&V> {
+    pub fn get(&mut self, key: K) -> Option<&V> {
         self.visit(OrCreate::Lookup(&key));
-        self.root.and_then(|root| {
-            if self.nodes[root].key == key {
-                Some(&self.nodes[root].value)
+        self.root.to_option().and_then(|root| {
+            if self.nodes[root as usize].key == key {
+                Some(&self.nodes[root as usize].value)
             } else {
                 None
             }
         })
     }
 
-    fn new_node(&mut self, key: K, value: V) -> usize {
+    #[inline]
+    fn new_node(&mut self, key: K, value: V) -> Idx {
         let node = Node {
             key,
             value,
-            left: None,
-            right: None,
+            left: idx_none,
+            right: idx_none,
         };
         self.nodes.push(node);
-        self.nodes.len() - 1
+        (self.nodes.len() - 1) as Idx
     }
 
+    #[inline]
     /// Swaps upper with lower.
-    fn rotate(&mut self, upper: usize, dir: Dir, lower: usize) -> usize {
-        assert_eq!(self.child(upper, dir), Some(lower));
+    fn rotate(&mut self, upper: Idx, dir: Dir) -> Idx {
+        let lower = self.child(upper, dir).to_option().unwrap();
 
         self.set_child(upper, dir, self.child(lower, dir.flip()));
-        self.set_child(lower, dir.flip(), Some(upper));
+        self.set_child(lower, dir.flip(), OptionIdx(upper));
 
         lower
     }
 
+    #[inline]
     fn splay_step(&mut self, path: Path) -> Path {
         use Path::*;
 
         match path {
             Two(idx1, dir1, idx2, dir2, idx3) => {
-                let middle = self.rotate(idx2, dir2, idx3);
-                self.set_child(idx1, dir1, Some(middle));
-                let new_idx = self.rotate(idx1, dir1, middle);
+                let middle = self.rotate(idx2, dir2);
+                self.set_child(idx1, dir1, OptionIdx(middle));
+                let new_idx = self.rotate(idx1, dir1);
                 Here(new_idx)
             }
             Here(_) | One(..) => path,
         }
     }
 
+    #[inline]
     fn splay_finish(&mut self, path: Path) {
         let root = match path {
             Path::Here(root) => root,
-            Path::One(root, dir, x) => self.rotate(root, dir, x),
+            Path::One(root, dir, x) => self.rotate(root, dir),
             Path::Two(..) => unreachable!(),
         };
-        self.root = Some(root);
+        self.root = OptionIdx(root);
     }
 
+    #[inline]
+    fn visit_inner_helper(
+        &mut self,
+        node_idx: Idx,
+        create: OrCreate<K, V>,
+        dir: Dir,
+    ) -> (Option<Path>, Option<V>) {
+        let (path, value) = self.visit_inner(self.child(node_idx, dir), create);
+        (
+            path.map(|path| {
+                self.set_child(node_idx, dir, OptionIdx(path.here()));
+                path.extend(node_idx, dir)
+            }),
+            value,
+        )
+    }
+
+    #[inline]
     fn visit_inner(
         &mut self,
-        node_idx: Option<usize>,
+        node_idx: OptionIdx,
         create: OrCreate<K, V>,
     ) -> (Option<Path>, Option<V>) {
         let key = create.key();
 
-        let (path, value) = match node_idx {
+        let (path, value) = match node_idx.to_option() {
             None => {
                 if let OrCreate::Create(key, value) = create {
                     let new_node_idx = self.new_node(key, value);
@@ -168,25 +213,11 @@ impl<K: Ord, V> Splay<K, V> {
                     (None, None)
                 }
             }
-            Some(node_idx) => {
-                let cmp_result = key.cmp(&self.nodes[node_idx].key);
-                let mut recurse = |dir: Dir, create: OrCreate<K, V>| -> (Option<Path>, Option<V>) {
-                    let (path, value) = self.visit_inner(self.child(node_idx, dir), create);
-                    (
-                        path.map(|path| {
-                            self.set_child(node_idx, dir, Some(path.here()));
-                            path.extend(node_idx, dir)
-                        }),
-                        value,
-                    )
-                };
-
-                match cmp_result {
-                    Ordering::Equal => (Some(Path::Here(node_idx)), create.value()),
-                    Ordering::Less => recurse(Dir::Left, create),
-                    Ordering::Greater => recurse(Dir::Right, create),
-                }
-            }
+            Some(node_idx) => match key.cmp(&self.nodes[node_idx as usize].key) {
+                Ordering::Equal => (Some(Path::Here(node_idx)), create.value()),
+                Ordering::Less => self.visit_inner_helper(node_idx, create, Dir::Left),
+                Ordering::Greater => self.visit_inner_helper(node_idx, create, Dir::Right),
+            },
         };
 
         let path = path.map(|path| self.splay_step(path));
@@ -199,9 +230,9 @@ impl<K: Ord, V> Splay<K, V> {
         value
     }
 
-    fn set(&mut self, key: K, value: V) {
+    pub fn set(&mut self, key: K, value: V) {
         if let Some(value) = self.visit(OrCreate::Create(key, value)) {
-            self.nodes[self.root.unwrap()].value = value;
+            self.nodes[self.root.to_option().unwrap() as usize].value = value;
         }
     }
 }
