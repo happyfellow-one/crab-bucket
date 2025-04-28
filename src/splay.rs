@@ -148,6 +148,22 @@ impl<K: Ord, V> Splay<K, V> {
         }
     }
 
+    fn node_depth(&self, idx: OptionIdx) -> u32 {
+        match idx.to_option() {
+            None => 0,
+            Some(idx) => {
+                1 + std::cmp::max(
+                    self.node_depth(self.nodes[idx].left),
+                    self.node_depth(self.nodes[idx].right),
+                )
+            }
+        }
+    }
+
+    pub fn depth(&self) -> u32 {
+        self.node_depth(self.root)
+    }
+
     pub fn iter(&self) -> SplayIter<K, V> {
         SplayIter::new(self)
     }
@@ -298,6 +314,7 @@ impl<K: Ord, V> Splay<K, V> {
 #[cfg(test)]
 mod tests {
     use quickcheck::{Arbitrary, Gen};
+    use rand::seq::SliceRandom;
     use std::collections::HashMap;
 
     use super::*;
@@ -313,6 +330,21 @@ mod tests {
         assert_eq!(tree.get(3), None);
         tree.set(2, 1);
         assert_eq!(tree.get(2), Some(&1));
+    }
+
+    #[test]
+    fn depth_test() {
+        let mut rng = rand::rng();
+        let mut tree: Splay<i32, i32> = Splay::new();
+        let mut keys: Vec<i32> = (1..100000).collect();
+        keys.shuffle(&mut rng);
+        for key in keys {
+            tree.set(key, key);
+        }
+
+        let depth = tree.depth();
+        println!("depth: {}", depth);
+        assert!(depth < 50);
     }
 
     #[derive(Clone, Debug)]

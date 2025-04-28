@@ -1,3 +1,18 @@
+# 2025-04-27
+
+Implemented iterator and added benchmarks for my splay implementation.
+
+I don't know why it is ~2x slower than splay implementation from a random
+crate that I found. Wanted to use Instruments.app but of course it's broken
+and I don't want to deal with it right now.
+
+A silly mistake I made was writing bench closure which cloned the vector
+on each iteration, which was... unfortunate. Learned the difference between
+`iter()` and `into_iter()` though!
+
+Still, the sorting benchmark is running out of memory on my system and
+I don't know why.
+
 # 2025-04-26
 
 It was a good exercise to implement splay tree! I got through some common
