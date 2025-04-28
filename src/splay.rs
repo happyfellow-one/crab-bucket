@@ -1,15 +1,15 @@
-use std::cmp::Ordering;
+use std::cmp::Ordering::{Equal, Greater, Less};
 
 type Idx = usize;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct OptionIdx(Idx);
-const idx_none: OptionIdx = OptionIdx(Idx::MAX);
+const IDX_NONE: OptionIdx = OptionIdx(Idx::MAX);
 
 impl OptionIdx {
     #[inline]
     fn to_option(self) -> Option<Idx> {
-        if self == idx_none {
+        if self == IDX_NONE {
             None
         } else {
             Some(self.0)
@@ -29,6 +29,60 @@ pub struct Splay<K, V> {
     nodes: Vec<Node<K, V>>,
 }
 
+pub struct SplayIter<'a, K, V> {
+    tree: &'a Splay<K, V>,
+    path: Vec<(Idx, bool)>,
+}
+
+impl<'a, K: Ord, V> SplayIter<'a, K, V> {
+    fn new(tree: &'a Splay<K, V>) -> Self {
+        let path = Vec::new();
+        let mut t = SplayIter { tree, path };
+        if let Some(root) = tree.root.to_option() {
+            t.towards_min(root);
+        }
+        t
+    }
+
+    fn towards_min(&mut self, idx: Idx) {
+        let mut idx = Some(idx);
+
+        while let Some(i) = idx {
+            self.path.push((i, false));
+            idx = self.tree.nodes[i].left.to_option();
+        }
+    }
+
+    fn upwards(&mut self) {
+        while let Some((_, right_subtree_visited)) = self.path.last() {
+            if !right_subtree_visited {
+                break;
+            }
+            self.path.pop();
+        }
+    }
+}
+
+impl<'a, K: Ord, V> Iterator for SplayIter<'a, K, V> {
+    type Item = (&'a K, &'a V);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let (node_idx, visited_right_subtree) = self.path.last_mut()?;
+        let node = &self.tree.nodes[*node_idx];
+
+        match (&visited_right_subtree, node.right.to_option()) {
+            (false, Some(right)) => {
+                *visited_right_subtree = true;
+                self.towards_min(right);
+            }
+            (true, _) => self.upwards(),
+            _ => {}
+        };
+
+        Some((&node.key, &node.value))
+    }
+}
+
 #[derive(Clone, Copy)]
 enum Dir {
     Left,
@@ -44,31 +98,21 @@ impl Dir {
         }
     }
 }
-/// A path from the current node to the node being splayed.
+
 #[derive(Clone, Copy)]
 enum Path {
-    Here(Idx),
-    One(Idx, Dir, Idx),
-    Two(Idx, Dir, Idx, Dir, Idx),
+    Empty,
+    One(Dir),
+    Two(Dir, Dir),
 }
 
 impl Path {
     #[inline]
-    fn here(&self) -> Idx {
-        use Path::*;
+    fn extend(&mut self, dir: Dir) {
         match *self {
-            Here(idx) | One(idx, ..) | Two(idx, ..) => idx,
-        }
-    }
-
-    #[inline]
-    fn extend(self, node_idx: Idx, dir: Dir) -> Self {
-        use Path::*;
-
-        match self {
-            Here(idx) => One(node_idx, dir, idx),
-            One(idx1, dir1, idx2) => Two(node_idx, dir, idx1, dir1, idx2),
-            Two(_, _, idx1, dir1, idx2) => Two(node_idx, dir, idx1, dir1, idx2),
+            Path::Empty => *self = Path::One(dir),
+            Path::One(dir1) => *self = Path::Two(dir, dir1),
+            Path::Two(dir1, _) => *self = Path::Two(dir, dir1),
         }
     }
 }
@@ -99,9 +143,13 @@ impl<'a, K, V> OrCreate<'a, K, V> {
 impl<K: Ord, V> Splay<K, V> {
     pub fn new() -> Self {
         Splay {
-            root: idx_none,
+            root: IDX_NONE,
             nodes: Vec::new(),
         }
+    }
+
+    pub fn iter(&self) -> SplayIter<K, V> {
+        SplayIter::new(self)
     }
 
     #[inline]
@@ -115,8 +163,8 @@ impl<K: Ord, V> Splay<K, V> {
     #[inline]
     fn set_child(&mut self, idx: Idx, dir: Dir, to: OptionIdx) {
         match dir {
-            Dir::Left => std::mem::replace(&mut self.nodes[idx as usize].left, to),
-            Dir::Right => std::mem::replace(&mut self.nodes[idx as usize].right, to),
+            Dir::Left => self.nodes[idx as usize].left = to,
+            Dir::Right => self.nodes[idx as usize].right = to,
         };
     }
 
@@ -136,8 +184,8 @@ impl<K: Ord, V> Splay<K, V> {
         let node = Node {
             key,
             value,
-            left: idx_none,
-            right: idx_none,
+            left: IDX_NONE,
+            right: IDX_NONE,
         };
         self.nodes.push(node);
         (self.nodes.len() - 1) as Idx
@@ -145,38 +193,38 @@ impl<K: Ord, V> Splay<K, V> {
 
     #[inline]
     /// Swaps upper with lower.
-    fn rotate(&mut self, upper: Idx, dir: Dir) -> Idx {
+    fn rotate(&mut self, upper: Idx, dir: Dir) {
         let lower = self.child(upper, dir).to_option().unwrap();
 
         self.set_child(upper, dir, self.child(lower, dir.flip()));
-        self.set_child(lower, dir.flip(), OptionIdx(upper));
+        self.set_child(lower, dir.flip(), OptionIdx(lower));
 
-        lower
+        self.nodes.swap(upper, lower);
     }
 
     #[inline]
-    fn splay_step(&mut self, path: Path) -> Path {
-        use Path::*;
-
-        match path {
-            Two(idx1, dir1, idx2, dir2, idx3) => {
-                let middle = self.rotate(idx2, dir2);
-                self.set_child(idx1, dir1, OptionIdx(middle));
-                let new_idx = self.rotate(idx1, dir1);
-                Here(new_idx)
+    fn splay_step(&mut self, idx: Idx, path: &mut Path) {
+        match *path {
+            Path::Empty | Path::One(_) => {}
+            Path::Two(dir1, dir2) => {
+                let next_node = self.child(idx, dir1).to_option().unwrap();
+                self.rotate(next_node, dir2);
+                self.rotate(idx, dir1);
+                *path = Path::Empty;
             }
-            Here(_) | One(..) => path,
         }
     }
 
     #[inline]
-    fn splay_finish(&mut self, path: Path) {
-        let root = match path {
-            Path::Here(root) => root,
-            Path::One(root, dir, x) => self.rotate(root, dir),
+    fn splay_finish(&mut self, path: &Path) {
+        match path {
+            Path::Empty => {}
             Path::Two(..) => unreachable!(),
-        };
-        self.root = OptionIdx(root);
+            Path::One(dir) => {
+                let root = self.root.to_option().unwrap();
+                self.rotate(root, *dir)
+            }
+        }
     }
 
     #[inline]
@@ -185,49 +233,59 @@ impl<K: Ord, V> Splay<K, V> {
         node_idx: Idx,
         create: OrCreate<K, V>,
         dir: Dir,
-    ) -> (Option<Path>, Option<V>) {
-        let (path, value) = self.visit_inner(self.child(node_idx, dir), create);
-        (
-            path.map(|path| {
-                self.set_child(node_idx, dir, OptionIdx(path.here()));
-                path.extend(node_idx, dir)
-            }),
-            value,
-        )
+        path: &mut Path,
+    ) -> Option<V> {
+        match self.child(node_idx, dir).to_option() {
+            Some(idx) => {
+                let value = self.visit_inner(idx, create, path);
+                path.extend(dir);
+                value
+            }
+            None => {
+                if let OrCreate::Create(k, v) = create {
+                    let node = self.new_node(k, v);
+                    self.set_child(node_idx, dir, OptionIdx(node));
+                    *path = Path::One(dir)
+                }
+                None
+            }
+        }
     }
 
     #[inline]
-    fn visit_inner(
-        &mut self,
-        node_idx: OptionIdx,
-        create: OrCreate<K, V>,
-    ) -> (Option<Path>, Option<V>) {
+    fn visit_inner(&mut self, node_idx: Idx, create: OrCreate<K, V>, path: &mut Path) -> Option<V> {
         let key = create.key();
 
-        let (path, value) = match node_idx.to_option() {
-            None => {
-                if let OrCreate::Create(key, value) = create {
-                    let new_node_idx = self.new_node(key, value);
-                    (Some(Path::Here(new_node_idx)), None)
-                } else {
-                    (None, None)
-                }
+        let value = match key.cmp(&self.nodes[node_idx as usize].key) {
+            Equal => {
+                *path = Path::Empty;
+                create.value()
             }
-            Some(node_idx) => match key.cmp(&self.nodes[node_idx as usize].key) {
-                Ordering::Equal => (Some(Path::Here(node_idx)), create.value()),
-                Ordering::Less => self.visit_inner_helper(node_idx, create, Dir::Left),
-                Ordering::Greater => self.visit_inner_helper(node_idx, create, Dir::Right),
-            },
+            Less => self.visit_inner_helper(node_idx, create, Dir::Left, path),
+            Greater => self.visit_inner_helper(node_idx, create, Dir::Right, path),
         };
 
-        let path = path.map(|path| self.splay_step(path));
-        (path, value)
+        self.splay_step(node_idx, path);
+        value
     }
 
     fn visit(&mut self, create: OrCreate<K, V>) -> Option<V> {
-        let (path, value) = self.visit_inner(self.root, create);
-        path.inspect(|path| self.splay_finish(*path));
-        value
+        match self.root.to_option() {
+            Some(root) => {
+                let mut path = Path::Empty;
+                let value = self.visit_inner(root, create, &mut path);
+                self.splay_finish(&path);
+                value
+            }
+            None => match create {
+                OrCreate::Lookup(_) => None,
+                OrCreate::Create(key, value) => {
+                    let root = self.new_node(key, value);
+                    self.root = OptionIdx(root);
+                    None
+                }
+            },
+        }
     }
 
     pub fn set(&mut self, key: K, value: V) {
@@ -261,6 +319,7 @@ mod tests {
     enum Op {
         Set(i32, i32),
         Get(i32),
+        CompareSorted,
     }
 
     impl Arbitrary for Op {
@@ -268,6 +327,7 @@ mod tests {
             match *g.choose(&[0, 1]).unwrap() {
                 0 => Op::Set(i32::arbitrary(g), i32::arbitrary(g)),
                 1 => Op::Get(i32::arbitrary(g)),
+                2 => Op::CompareSorted,
                 _ => unreachable!(),
             }
         }
@@ -288,6 +348,12 @@ mod tests {
                     if tree.get(k) != map.get(&k) {
                         return false;
                     }
+                }
+                Op::CompareSorted => {
+                    let tree_vec: Vec<i32> = tree.iter().map(|(k, _)| *k).collect();
+                    let mut map_vec: Vec<i32> = map.iter().map(|(k, _)| *k).collect();
+                    map_vec.sort();
+                    assert_eq!(tree_vec, map_vec);
                 }
             }
         }

@@ -8,10 +8,13 @@ use rand::prelude::*;
 
 fn criterion_benchmark(c: &mut Criterion) {
     let mut rng = rand::rng();
-    let mut nums1: Vec<i32> = (1..10000).collect();
-    let mut nums2: Vec<i32> = (1..10000).collect();
+    let mut nums1: Vec<i32> = (1..100000).collect();
+    let mut nums2: Vec<i32> = (1..100000).collect();
     nums1.shuffle(&mut rng);
     nums2.shuffle(&mut rng);
+    nums1.truncate(50000);
+    nums2.truncate(100);
+    nums2 = nums2.iter().cycle().take(50000).map(|x| *x).collect();
     let nums1 = nums1;
     let nums2 = nums2;
     c.bench_function("get and set splay", |b| {
