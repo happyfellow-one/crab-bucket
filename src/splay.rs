@@ -75,8 +75,10 @@ impl<'a, K: Ord, V> Iterator for SplayIter<'a, K, V> {
                 *visited_right_subtree = true;
                 self.towards_min(right);
             }
-            (true, _) => self.upwards(),
-            _ => {}
+            _ => {
+                *visited_right_subtree = true;
+                self.upwards()
+            }
         };
 
         Some((&node.key, &node.value))
@@ -330,6 +332,12 @@ mod tests {
         assert_eq!(tree.get(3), None);
         tree.set(2, 1);
         assert_eq!(tree.get(2), Some(&1));
+        assert_eq!(
+            tree.iter()
+                .map(|(x, y)| (*x, *y))
+                .collect::<Vec<(i32, i32)>>(),
+            vec![(1, 1), (2, 1)]
+        );
     }
 
     #[test]
@@ -356,7 +364,7 @@ mod tests {
 
     impl Arbitrary for Op {
         fn arbitrary(g: &mut Gen) -> Self {
-            match *g.choose(&[0, 1]).unwrap() {
+            match *g.choose(&[0, 1, 2]).unwrap() {
                 0 => Op::Set(i32::arbitrary(g), i32::arbitrary(g)),
                 1 => Op::Get(i32::arbitrary(g)),
                 2 => Op::CompareSorted,
