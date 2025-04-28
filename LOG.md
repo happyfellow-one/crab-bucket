@@ -13,6 +13,16 @@ on each iteration, which was... unfortunate. Learned the difference between
 Still, the sorting benchmark is running out of memory on my system and
 I don't know why.
 
+Figured it out! I had an infinite iterator problem, solved.
+
+About splay tree: I should test a couple of things:
+
+- Change creating the node to always push to the root. Maybe I should
+  move a key close to what I'm inserting to the root if it's not yet
+  in the tree?
+- Can I do splay top-down?
+- Should I rewrite to iteration instead of recursion?
+
 # 2025-04-26
 
 It was a good exercise to implement splay tree! I got through some common

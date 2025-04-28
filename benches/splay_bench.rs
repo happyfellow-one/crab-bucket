@@ -76,8 +76,9 @@ fn criterion_benchmark(c: &mut Criterion) {
             for &n in nums1.iter() {
                 t.insert(n, n);
             }
-            let t = black_box(t.iter().map(|(k, _)| *k).collect::<Vec<i32>>());
-            drop(t);
+            let mut t = black_box(t.iter().map(|(k, _)| *k).collect::<Vec<i32>>());
+            t.sort();
+            black_box(t);
         })
     });
     c.bench_function("set and sort splaymap", |b| {
